@@ -1,16 +1,15 @@
 # strategy-ecology-c
 
-C implementation of strategy species ecology for ternary agents.
-
-Five species: **Explorer**, **Diplomat**, **Marksman**, **Climber**, **Prospector**.
+C implementation of strategy ecology — Lotka-Volterra style species dynamics for ternary agents.
 
 ## Components
 
-- **Species enum & traits** — typical win rates and entropy per species
-- **Population** — species counts, Shannon diversity, Simpson index
-- **LotkaVolterra** — Euler simulation with interaction matrix
-- **EcologicalResilience** — species survival and resilience index
-- **SpeciesClassify** — classify agents into species by behavior profile
+- **Population**: N agents with ternary strategies (Rock/Paper/Scissors)
+- **Interaction**: pairwise payoff matrix evaluation
+- **SpeciesTracker**: count agents in each of 5 species categories
+- **LotkaVolterra**: Euler integration of species dynamics (growth, interaction, decay)
+- **CoexistenceCheck**: verify all species survive after N generations
+- **FitnessLandscape**: evaluate fitness in configurable landscape
 
 ## Build & Test
 

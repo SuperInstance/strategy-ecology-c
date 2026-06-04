@@ -2,92 +2,127 @@
 #define STRATEGY_ECOLOGY_H
 
 #include <stddef.h>
+#include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/*
+ * Strategy Ecology — Lotka-Volterra style species dynamics for ternary agents.
+ *
+ * Each agent carries a ternary strategy in {0, 1, 2}.
+ * Agents are classified into 5 species categories based on strategy and fitness.
+ * Species interact via a Lotka-Volterra system with Euler integration.
+ */
 
-/* ── Species ──────────────────────────────────────────────────────── */
+/* Ternary strategy values */
+typedef enum { STRAT_ROCK = 0, STRAT_PAPER = 1, STRAT_SCISSORS = 2 } TernaryStrategy;
 
+/* 5 species categories */
 typedef enum {
-    SPECIES_EXPLORER    = 0,
-    SPECIES_DIPLOMAT    = 1,
-    SPECIES_MARKSMAN    = 2,
-    SPECIES_CLIMBER     = 3,
-    SPECIES_PROSPECTOR  = 4,
-    SPECIES_COUNT       = 5
-} Species;
+    SPECIES_ALPHA   = 0,  /* dominant strategy */
+    SPECIES_BETA    = 1,  /* counter to dominant */
+    SPECIES_GAMMA   = 2,  /* counter to counter */
+    SPECIES_DELTA   = 3,  /* neutral / generalist */
+    SPECIES_EPSILON = 4,  /* low-fitness scavenger */
+    SPECIES_COUNT   = 5
+} SpeciesID;
 
+/* Agent */
 typedef struct {
-    double win_rate;   /* typical win rate [0,1] */
-    double entropy;    /* typical Shannon entropy of action distribution */
-    const char *name;
-} SpeciesTraits;
+    TernaryStrategy strategy;
+    double fitness;
+    SpeciesID species;
+} Agent;
 
-/* Get static traits for a species. */
-const SpeciesTraits *species_traits(Species s);
-
-/* ── Population ───────────────────────────────────────────────────── */
-
+/* Population of N agents */
 typedef struct {
-    unsigned int counts[SPECIES_COUNT];
+    Agent *agents;
+    size_t count;
+    double payoff_matrix[3][3];  /* payoff[a][b] = payoff to strategy a facing b */
 } Population;
 
-Population population_create(const unsigned int counts[SPECIES_COUNT]);
-unsigned int population_total(const Population *p);
-double      population_fraction(const Population *p, Species s);
-
-/* Shannon diversity index H = -Σ p_i ln(p_i) */
-double population_shannon(const Population *p);
-
-/* Simpson diversity index D = 1 - Σ p_i² */
-double population_simpson(const Population *p);
-
-/* ── Lotka-Volterra dynamics ──────────────────────────────────────── */
-
+/* Species tracker — counts per species */
 typedef struct {
-    double alpha[SPECIES_COUNT][SPECIES_COUNT]; /* interaction matrix */
-    double growth[SPECIES_COUNT];               /* intrinsic growth rates */
-    double dt;                                  /* time step */
+    int counts[SPECIES_COUNT];
+    double total_fitness[SPECIES_COUNT];
+} SpeciesTracker;
+
+/* Lotka-Volterra parameters and state */
+typedef struct {
+    double populations[SPECIES_COUNT];   /* current population sizes */
+    double growth_rates[SPECIES_COUNT];  /* intrinsic growth rates r_i */
+    double interaction[SPECIES_COUNT][SPECIES_COUNT]; /* A_ij interaction matrix */
+    double carrying_capacity[SPECIES_COUNT];          /* K_i */
+    double dt;                                          /* time step */
+    double decay_rate;                                  /* universal decay */
+    int generations;                                    /* number of integration steps */
 } LotkaVolterra;
 
-/* Build a LotkaVolterra model with default interaction matrix. */
-LotkaVolterra lotka_volterra_default(double dt);
-
-/* Run one Euler step. Returns updated population (rounded to ints). */
-Population lotka_volterra_step(const LotkaVolterra *lv,
-                               const Population *pop);
-
-/* Run n Euler steps. */
-Population lotka_volterra_simulate(const LotkaVolterra *lv,
-                                   const Population *pop,
-                                   size_t steps);
-
-/* ── Ecological Resilience ────────────────────────────────────────── */
-
+/* Coexistence check result */
 typedef struct {
-    int surviving[SPECIES_COUNT];   /* 1 if species count > 0 */
+    bool all_survive;
+    double min_population;
     int surviving_count;
-    double resilience_index;        /* fraction of species surviving, weighted by evenness */
-} EcologicalResilience;
+    double final_populations[SPECIES_COUNT];
+} CoexistenceResult;
 
-EcologicalResilience ecological_resilience(const Population *before,
-                                           const Population *after);
-
-/* ── Species Classification ───────────────────────────────────────── */
-
+/* Fitness landscape — maps strategy + context to fitness */
 typedef struct {
-    double win_rate;
-    double entropy;
-    double cooperation_rate;  /* fraction of cooperative actions */
-    double risk_tolerance;    /* [0,1] */
-} AgentBehavior;
+    double peaks[3];         /* fitness peak per strategy */
+    double widths[3];        /* width/breadth of each peak */
+    double shift;            /* environmental shift factor */
+    double noise;            /* noise amplitude */
+    int seed;                /* RNG seed for reproducibility */
+} FitnessLandscape;
 
-/* Classify an agent into a species based on behavior profile. */
-Species species_classify(const AgentBehavior *behavior);
+/* --- Population API --- */
 
-#ifdef __cplusplus
-}
-#endif
+/* Create a population with N random agents and default payoff matrix */
+Population *population_create(size_t n, int seed);
+
+/* Free a population */
+void population_free(Population *pop);
+
+/* Evaluate all pairwise interactions, updating agent fitness */
+void population_interact(Population *pop);
+
+/* Classify each agent into a species based on strategy and fitness */
+void population_classify(Population *pop);
+
+/* --- SpeciesTracker API --- */
+
+/* Initialize a tracker from a classified population */
+void species_tracker_init(SpeciesTracker *st, const Population *pop);
+
+/* Get count for a species */
+int species_tracker_count(const SpeciesTracker *st, SpeciesID id);
+
+/* Get average fitness for a species; returns 0 if count is 0 */
+double species_tracker_avg_fitness(const SpeciesTracker *st, SpeciesID id);
+
+/* --- LotkaVolterra API --- */
+
+/* Initialize with default competitive Lotka-Volterra parameters */
+void lotka_volterra_init(LotkaVolterra *lv, const SpeciesTracker *st);
+
+/* Perform one Euler integration step */
+void lotka_volterra_step(LotkaVolterra *lv);
+
+/* Run for N generations, updating populations in place */
+void lotka_volterra_run(LotkaVolterra *lv, int generations);
+
+/* --- CoexistenceCheck API --- */
+
+/* Check if all species survive after N generations */
+CoexistenceResult coexistence_check(const LotkaVolterra *lv, int generations, double threshold);
+
+/* --- FitnessLandscape API --- */
+
+/* Initialize a fitness landscape */
+void fitness_landscape_init(FitnessLandscape *fl, double shift, double noise, int seed);
+
+/* Evaluate fitness for a given strategy */
+double fitness_landscape_evaluate(const FitnessLandscape *fl, TernaryStrategy s);
+
+/* Apply fitness landscape to a population */
+void fitness_landscape_apply(const FitnessLandscape *fl, Population *pop);
 
 #endif /* STRATEGY_ECOLOGY_H */
