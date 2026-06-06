@@ -1,1 +1,3 @@
 test_ecology\n*.o
+target/
+Cargo.lock
